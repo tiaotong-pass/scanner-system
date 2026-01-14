@@ -14,15 +14,17 @@
             overflow: hidden;
         }
 
-        /* --- 相機全螢幕 (暴力縮放版) --- */
+        /* --- 相機全螢幕 (強制填滿修正) --- */
         #qr-reader {
-            position: fixed !important; top: 0; left: 0;
-            width: 100% !important; height: 100% !important;
+            position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
             z-index: 0; background: #000;
         }
-        /* 強制影片填滿，若不支援則會被裁切但不會留黑邊 */
+        
+        /* 強制影片填滿螢幕，使用 object-fit: cover 裁切多餘邊緣 */
         #qr-reader video {
-            width: 100% !important; height: 100% !important;
+            width: 100% !important;
+            height: 100% !important;
             object-fit: cover !important;
         }
 
@@ -31,25 +33,19 @@
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             z-index: 10;
             display: flex; flex-direction: column;
-            align-items: center;
-            /* 左右留白，避免貼邊 */
-            padding: 20px;
+            justify-content: space-between; align-items: center;
+            padding: 40px 20px;
+            padding-bottom: env(safe-area-inset-bottom, 40px);
             box-sizing: border-box;
             pointer-events: none;
-            transition: opacity 0.3s ease;
         }
 
-        /* --- 調整版面配置 (關鍵修改) --- */
-        /* 上方空間分配：設為 1 */
-        .spacer-top { flex: 1; }
-        /* 下方空間分配：設為 1.5 (下方空間比較大，所以框框會被推上去) */
-        .spacer-bottom { flex: 1.5; }
-
-        /* --- 掃描框樣式 --- */
+        /* --- 待機掃描介面 (回歸置中) --- */
+        #state-scanning { background: rgba(0,0,0,0.1); }
+        
         .scan-frame {
             position: relative;
-            /* 縮小一點，避免太寬被切到 */
-            width: 250px; height: 250px; 
+            width: 260px; height: 260px;
             border: 2px solid rgba(255,255,255,0.9); border-radius: 20px;
             /* 巨大的半透明遮罩 */
             box-shadow: 0 0 0 4000px rgba(0,0,0,0.6); 
@@ -57,19 +53,18 @@
         
         .scan-tip {
             margin-top: 20px; padding: 8px 24px;
-            background: rgba(0,0,0,0.7); color: #fff; 
+            background: rgba(0,0,0,0.6); color: #fff; 
             border-radius: 50px; font-size: 16px; letter-spacing: 1px;
-            /* 讓提示文字有點光暈，比較清楚 */
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
             backdrop-filter: blur(4px);
         }
 
         /* --- 載入與結果卡片 --- */
         #state-loading { background: rgba(0,0,0,0.85); color: white; justify-content: center; }
-        .loading-content { text-align: center; margin-bottom: 50px; } /* 稍微往上提 */
+        .loading-content { text-align: center; }
         .loading-spinner { font-size: 50px; animation: spin 1s infinite linear; margin-bottom: 20px; display: block; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
 
+        /* 結果卡片 (置中) */
         .result-card {
             width: 90%; max-width: 320px;
             padding: 30px 20px; border-radius: 20px;
@@ -77,7 +72,6 @@
             box-shadow: 0 20px 50px rgba(0,0,0,0.8);
             pointer-events: auto; opacity: 0; transition: opacity 0.3s ease-out;
             background: #222;
-            margin-bottom: 10%; /* 讓卡片也稍微偏上 */
         }
         .result-card.show { opacity: 1; }
 
@@ -98,11 +92,9 @@
         }
 
         .store-footer { 
-            position: absolute; bottom: 30px; /* 固定在底部 */
-            color: rgba(255,255,255,0.5); font-size: 14px; font-weight: bold; 
-            text-shadow: 0 1px 2px rgba(0,0,0,0.8);
-            width: 100%; text-align: center;
-            pointer-events: none;
+            color: rgba(255,255,255,0.6); font-size: 14px; font-weight: bold; 
+            text-shadow: 0 1px 3px rgba(0,0,0,1);
+            text-align: center;
         }
         .hidden { display: none !important; opacity: 0; }
     </style>
@@ -111,13 +103,10 @@
     <div id="qr-reader"></div>
 
     <div id="state-scanning" class="overlay-layer">
-        <div class="spacer-top"></div>
-        
+        <div style="flex:1"></div>
         <div class="scan-frame"></div>
         <div class="scan-tip">請對準行動條碼</div>
-        
-        <div class="spacer-bottom"></div>
-        
+        <div style="flex:1"></div>
         <div class="store-footer"></div>
     </div>
 
@@ -126,7 +115,6 @@
             <span class="loading-spinner">⏳</span>
             <div style="font-size: 20px; font-weight:bold;">雲端驗證中...</div>
         </div>
-        <div class="store-footer"></div>
     </div>
 
     <div id="state-result" class="overlay-layer hidden" style="background: rgba(0,0,0,0.85); justify-content: center;">
@@ -136,7 +124,7 @@
             <div class="result-desc" id="res-desc"></div>
             <button class="card-btn" id="res-btn" onclick="resetScan()"></button>
         </div>
-        <div class="store-footer"></div>
+        <div class="store-footer" style="position: absolute; bottom: 40px;"></div>
     </div>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
@@ -211,7 +199,11 @@
 
     function resetScan() { switchState('scan'); html5QrCode.resume(); isProcessing = false; }
 
-    const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
+    // ★★★ 關鍵修改：移除 qrbox 設定 ★★★
+    // 移除 qrbox: { width: 250... }，這樣程式庫就不會畫出那個討厭的錯位框
+    // 同時保持 aspectRatio: 1.0 確保相機比例正確
+    const config = { fps: 10, aspectRatio: 1.0 };
+    
     html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
         .catch(() => html5QrCode.start({ facingMode: "user" }, config, onScanSuccess));
     </script>
