@@ -20,6 +20,7 @@
             width: 100%; height: 100%;
             z-index: 0; background: #000;
         }
+        /* 保持 cover 以填滿螢幕，雖然這會裁切掉一點邊緣，但對全螢幕掃描影響不大 */
         #qr-reader video {
             width: 100% !important; height: 100% !important; object-fit: cover !important;
         }
@@ -36,7 +37,7 @@
             pointer-events: none;
         }
 
-        /* --- 1. 啟動按鈕介面 (預設顯示) --- */
+        /* --- 1. 啟動按鈕介面 --- */
         #state-start { 
             background: #000; z-index: 20; pointer-events: auto;
             justify-content: center; text-align: center;
@@ -45,10 +46,8 @@
             background: #1B9A4B; color: white; border: none; padding: 18px 50px;
             font-size: 22px; font-weight: bold; border-radius: 50px; cursor: pointer;
             box-shadow: 0 4px 20px rgba(27, 154, 75, 0.5);
-            transition: transform 0.1s;
         }
-        .start-btn:active { transform: scale(0.95); }
-        .start-btn:disabled { background: #555; cursor: not-allowed; }
+        .start-btn:active { transform: scale(0.95); background: #147A3B; }
         .start-hint { color: #888; margin-top: 20px; font-size: 14px; line-height: 1.6; }
 
         /* --- 2. 掃描中介面 --- */
@@ -56,6 +55,7 @@
         .scan-frame {
             position: relative; width: 260px; height: 260px;
             border: 2px solid rgba(255,255,255,0.9); border-radius: 20px;
+            /* 視覺遮罩：這純粹是畫給人看的，程式實際上在掃描全螢幕 */
             box-shadow: 0 0 0 4000px rgba(0,0,0,0.6); 
         }
         .scan-tip {
@@ -105,10 +105,10 @@
     <div id="state-start" class="overlay-layer">
         <div style="flex:1"></div>
         <div>
-            <button id="btn-start" class="start-btn" onclick="startCameraSafe()">啟動掃描器</button>
+            <button id="btn-start" class="start-btn" onclick="startCameraSimple()">啟動掃描器</button>
             <div class="start-hint" id="status-msg">
-                請點擊上方按鈕開啟相機<br>
-                (若無法啟動，請檢查瀏覽器權限設定)
+                請點擊按鈕開啟相機<br>
+                (Safari 使用者請確保允許權限)
             </div>
         </div>
         <div style="flex:1"></div>
@@ -155,10 +155,9 @@
     };
     const resultCard = document.getElementById('result-card-body');
     
-    // 初始化 QR Code 實例
+    // 初始化
     const html5QrCode = new Html5Qrcode('qr-reader');
     let isProcessing = false;
-    let isCameraRunning = false; // 狀態鎖：防止重複啟動
 
     function switchState(stateName) {
         Object.values(states).forEach(el => el.classList.add('hidden'));
@@ -203,10 +202,10 @@
         if (isProcessing) return;
         isProcessing = true;
         
-        // 暫停相機，但不關閉，避免重新啟動時又撞車
-        html5QrCode.pause(true); 
-        switchState('load');
+        // 暫停相機
+        try { await html5QrCode.pause(true); } catch(e){}
         
+        switchState('load');
         const data = await updateCheckin(decodedText);
         
         if (data.result === 'ok') {
@@ -226,42 +225,44 @@
         isProcessing = false; 
     }
 
-    // ★★★ 安全啟動邏輯 (Safe Start) ★★★
-    function startCameraSafe() {
-        // 如果相機已經在跑，或正在啟動中，直接禁止執行！
-        if (isCameraRunning) return;
-        isCameraRunning = true;
-
+    // ★★★ 最簡化啟動邏輯 (Safari 修復版) ★★★
+    function startCameraSimple() {
         const btn = document.getElementById('btn-start');
         const statusMsg = document.getElementById('status-msg');
-        
         btn.disabled = true;
         btn.textContent = "啟動中...";
-        statusMsg.style.color = "#ccc";
 
-        // 基本設定：保留 qrbox 以維持高靈敏度
-        const config = { 
-            fps: 10, 
-            qrbox: { width: 250, height: 250 },
-            aspectRatio: 1.0
-        };
+        // 1. 強制清除舊狀態 (防止 Safari 死鎖)
+        html5QrCode.clear().then(() => {
+            startInternal();
+        }).catch(err => {
+            // 就算清除失敗(例如本來就沒開)，也嘗試直接啟動
+            console.log("Clear failed or not needed", err);
+            startInternal();
+        });
 
-        // 啟動！不指定解析度，由瀏覽器決定最安全的設定
-        html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
-            .then(() => {
-                // 成功：切換介面
-                switchState('scan');
-                btn.textContent = "啟動掃描器"; // 復原文字以備下次使用
-                btn.disabled = false;
-            })
-            .catch(err => {
-                console.error("相機啟動失敗", err);
-                // 失敗：解除鎖定，顯示錯誤訊息
-                isCameraRunning = false; 
-                btn.disabled = false;
-                btn.textContent = "重試啟動";
-                statusMsg.innerHTML = `<span style="color:#ff5555">啟動失敗: ${err}<br>請確認 Safari 是否允許相機權限</span>`;
-            });
+        function startInternal() {
+            // 2. 設定參數：不設 qrbox (全螢幕掃描 = 高靈敏度)，FPS 10
+            const config = { 
+                fps: 10,
+                // qrbox: undefined, // 關鍵！不設定 qrbox，讓它掃描整張圖
+                aspectRatio: undefined // 關鍵！不設定比例，讓相機自己決定
+            };
+
+            // 3. 啟動相機：只要求「環境鏡頭」，不指定解析度
+            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+                .then(() => {
+                    switchState('scan');
+                    btn.textContent = "啟動掃描器";
+                    btn.disabled = false;
+                })
+                .catch(err => {
+                    console.error("啟動失敗", err);
+                    btn.disabled = false;
+                    btn.textContent = "重試啟動";
+                    statusMsg.innerHTML = `<span style="color:#ff5555">啟動失敗: ${err}<br>請確認瀏覽器權限或重新整理網頁</span>`;
+                });
+        }
     }
     </script>
 </body>
