@@ -6,20 +6,31 @@
     <title>條通祭核銷掃描</title>
     <style>
         /* --- 全域設定 --- */
-        body {
+        html, body {
             margin: 0; padding: 0;
             background-color: #000;
             font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif;
-            height: 100vh; overflow: hidden;
-            position: relative; /* 為絕對定位做準備 */
+            width: 100%; height: 100%;
+            overflow: hidden; /* 禁止滑動 */
         }
 
-        /* --- 相機全螢幕設定 (修正黑邊問題) --- */
+        /* --- 相機全螢幕設定 (暴力修正版) --- */
         #qr-reader {
-            position: fixed; /* 強制固定在視窗 */
-            top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 0; /* 在最底層 */
-            object-fit: cover; /* 充滿螢幕 */
+            position: fixed !important;
+            top: 0; left: 0;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 0;
+            border: none !important;
+            background: #000;
+        }
+
+        /* ★★★ 關鍵修正：強制影片拉伸填滿，消除黑邊 ★★★ */
+        #qr-reader video {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important; /* 像桌布一樣填滿，不要留黑邊 */
+            display: block !important;
         }
 
         /* --- 介面圖層 (覆蓋層) --- */
@@ -28,57 +39,74 @@
             z-index: 10;
             display: flex; flex-direction: column;
             justify-content: space-between; align-items: center;
-            padding: 40px 20px; box-sizing: border-box;
+            padding: 40px 20px; 
+            /* 針對 iPhone 底部 Home Bar 的安全距離 */
+            padding-bottom: env(safe-area-inset-bottom, 40px);
+            box-sizing: border-box;
             pointer-events: none;
-            transition: opacity 0.3s ease; /* 只用透明度過渡 */
+            transition: opacity 0.3s ease;
         }
 
         /* --- 狀態樣式 --- */
-        #state-scanning { background: rgba(0,0,0,0.3); }
+        #state-scanning { background: rgba(0,0,0,0.1); /* 稍微調淡背景，讓相機更清楚 */ }
         
-        /* 讓載入中畫面背景更深，與結果卡片一致 */
         #state-loading { background: rgba(0,0,0,0.85); color: white; }
 
         .scan-frame {
-            width: 280px; height: 280px;
-            border: 2px solid rgba(255,255,255,0.7); border-radius: 20px;
-            box-shadow: 0 0 0 2000px rgba(0,0,0,0.5); /* 加大遮罩範圍 */
+            position: relative;
+            width: 260px; height: 260px; /* 稍微縮小一點避免爆版 */
+            border: 2px solid rgba(255,255,255,0.8); border-radius: 20px;
+            /* 使用超大陰影來製作「中間亮、四周暗」的效果 */
+            box-shadow: 0 0 0 4000px rgba(0,0,0,0.6); 
         }
+        
+        /* 掃描提示文字 */
         .scan-tip {
-            margin-top: 20px; padding: 10px 20px;
-            background: rgba(0,0,0,0.6); color: #fff; border-radius: 50px; font-size: 16px;
+            margin-top: 20px; padding: 8px 20px;
+            background: rgba(0,0,0,0.6); color: #fff; 
+            border-radius: 50px; font-size: 15px; letter-spacing: 1px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
         }
+
+        /* 載入動畫 */
         .loading-spinner { font-size: 50px; animation: spin 1s infinite linear; margin-bottom: 20px; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
 
-        /* --- 結果訊息卡片 (修正動畫問題) --- */
+        /* --- 結果訊息卡片 --- */
         .result-card {
-            width: 85%; max-width: 340px;
-            padding: 30px 20px; border-radius: 16px;
+            width: 90%; max-width: 320px;
+            padding: 30px 20px; border-radius: 20px;
             text-align: center; color: white;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
             pointer-events: auto;
-            /* 移除 translateY 動畫，只保留透明度 */
             opacity: 0; transition: opacity 0.3s ease-out;
+            background: #222; /* 預設深色底 */
         }
         .result-card.show { opacity: 1; }
 
-        /* 卡片配色保持不變 */
+        /* 卡片配色 */
         .card-success { background: linear-gradient(135deg, #2ecc71, #27ae60); }
-        .success-btn { background: #27ae60; }
+        .success-btn { background: #219150; color: white; }
+
         .card-error { background: linear-gradient(135deg, #e74c3c, #c0392b); }
-        .error-btn { background: #c0392b; }
-        .card-warning { background: linear-gradient(135deg, #f1c40f, #f39c12); color: #333; }
+        .error-btn { background: #962d22; color: white; }
+
+        .card-warning { background: linear-gradient(135deg, #f1c40f, #f39c12); color: #222; }
         .warning-btn { background: #d35400; color: white; }
         
-        .result-title { font-size: 28px; font-weight: bold; margin: 15px 0; }
-        .result-desc { font-size: 16px; line-height: 1.5; opacity: 0.9; }
+        .result-title { font-size: 26px; font-weight: bold; margin: 15px 0 10px 0; }
+        .result-desc { font-size: 16px; line-height: 1.5; opacity: 0.95; margin-bottom: 20px;}
+        
         .card-btn {
-            margin-top: 25px; padding: 12px 30px; border: none; border-radius: 50px;
+            width: 100%; padding: 12px 0; border: none; border-radius: 50px;
             font-size: 18px; font-weight: bold; cursor: pointer;
             box-shadow: 0 4px 10px rgba(0,0,0,0.2);
         }
-        .store-footer { color: rgba(255,255,255,0.6); font-size: 16px; font-weight: bold; padding-bottom: 20px; }
+
+        .store-footer { 
+            color: rgba(255,255,255,0.7); font-size: 14px; font-weight: bold; 
+            text-shadow: 0 1px 3px rgba(0,0,0,1);
+        }
         .hidden { display: none !important; opacity: 0; }
     </style>
 </head>
@@ -117,7 +145,6 @@
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script>
-    // 👇 請確認這裡是否為您最新的 GAS 網址
     const GAS_URL = "https://script.google.com/macros/s/AKfycbzhh_1BWbFNwumkrE7P3o0lwp5Ea6v9aCN3zK0DY__B3BOX_o47bAI6K5MLiMj2aF1b/exec";
     
     const storeName = localStorage.getItem('storeName');
@@ -130,7 +157,6 @@
     function switchState(stateName) {
         Object.values(states).forEach(el => el.classList.add('hidden'));
         states[stateName].classList.remove('hidden');
-        // 移除舊的動畫邏輯，改用簡單的透明度切換
         if (stateName === 'result') {
             setTimeout(() => resultCard.classList.add('show'), 10);
         } else {
