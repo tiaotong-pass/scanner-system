@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -35,7 +35,6 @@
             position: relative;
             width: 80%;
             background: url('img/camera.png') no-repeat center center;
-            margin: 0 auto;
             background-size: 76% 97%;
             margin: 0 auto;
             padding-top: 10%;
@@ -47,19 +46,14 @@
             margin: auto;
             aspect-ratio: 1 / 1;
             overflow: hidden;
+            border-radius: 10px;
         }
         #qr-reader video {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            min-width: 100%;
-            min-height: 100%;
             object-fit: cover;
+            width: 100%;
+            height: 100%;
         }
-        h1 {
-            color: #ffffff;
-        }
+        h1 { color: #ffffff; }
         #store-name {
             display: block;
             white-space: nowrap;
@@ -72,6 +66,13 @@
             margin-top: 20px;
             font-weight: bold;
             min-height: 50px;
+            text-shadow: 1px 1px 2px black;
+        }
+        .msg-box {
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+            display: inline-block;
         }
     </style>
 </head>
@@ -85,20 +86,28 @@
     </div>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script>
+    // --- 設定區域 ---
     const TOTAL_STORES = 47;
+    // 您的 Google Apps Script 網址 (已直接填入)
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbzhh_1BWbFNwumkrE7P3o0lwp5Ea6v9aCN3zK0DY__B3BOX_o47bAI6K5MLiMj2aF1b/exec";
+
+    // --- 初始化 ---
     const storeIndex = parseInt(localStorage.getItem('storeIndex') || '0', 10);
     const storeName = localStorage.getItem('storeName') || '';
+    
+    // 如果沒有登入，跳轉回登入頁
     if (!storeIndex || !storeName) {
         location.href = 'store-login.html';
     }
+    
     const storeNameEl = document.getElementById('store-name');
     storeNameEl.textContent = storeName;
 
+    // 調整字體大小
     function adjustStoreNameFont() {
         let size = 2.0;
         storeNameEl.style.fontSize = size + 'em';
-        const maxWidth = Math.min(storeNameEl.parentElement.clientWidth,
-                                  window.innerWidth * 0.8);
+        const maxWidth = Math.min(storeNameEl.parentElement.clientWidth, window.innerWidth * 0.8);
         while (storeNameEl.scrollWidth > maxWidth && size > 0.5) {
             size -= 0.1;
             storeNameEl.style.fontSize = size.toFixed(1) + 'em';
@@ -107,52 +116,46 @@
     adjustStoreNameFont();
     window.addEventListener('resize', adjustStoreNameFont);
 
-    let PARTICIPANTS = [];
-    async function loadParticipants() {
-        const res = await fetch('participants.txt');
-        const text = await res.text();
-        PARTICIPANTS = text.split(/\r?\n/).map(l => l.trim()).filter(l => l);
-    }
-
-async function updateCheckin(id) {
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbzhh_1BWbFNwumkrE7P3o0lwp5Ea6v9aCN3zK0DY__B3BOX_o47bAI6K5MLiMj2aF1b/exec";
-        
+    // --- 核心功能：呼叫 Google 大腦 ---
+    async function updateCheckin(id) {
         try {
+            // 發送請求給 GAS (使用 text/plain 避免 CORS 問題)
             const res = await fetch(GAS_URL, {
                 method: 'POST',
                 body: JSON.stringify({ id: id, storeName: storeName })
             });
             
             const data = await res.json();
-            
             const statusEl = document.getElementById('status');
             
             if (data.result === "ok") {
-                setStatus('ok');
-                statusEl.innerHTML += `<div style="color:white; font-size:16px; margin-top:5px;">${data.message}</div>`;
+                // 成功：顯示綠色勾勾
+                setStatus('ok'); 
+                statusEl.innerHTML += `<div class="msg-box" style="background:rgba(0,128,0,0.8); color:white;">${data.message}</div>`;
             } else if (data.result === "invalid") {
+                // 失敗：顯示紅色叉叉
                 setStatus('invalid');
-                statusEl.innerHTML += `<div style="color:red; font-size:16px; margin-top:5px;">${data.message}</div>`;
+                statusEl.innerHTML += `<div class="msg-box" style="background:rgba(255,0,0,0.8); color:white;">${data.message}</div>`;
             } else {
                 setStatus('Server error');
             }
-            
             return data;
         } catch (e) {
             console.error(e);
-            const statusEl = document.getElementById('status');
-            statusEl.innerHTML = `<h3 style="color:red">連線錯誤，請重試</h3>`;
+            document.getElementById('status').innerHTML = `<div class="msg-box" style="background:white; color:red;">連線失敗，請檢查網路</div>`;
             return { result: 'error' };
         }
     }
 
+    // --- 顯示狀態圖片 ---
     function setStatus(type) {
         const el = document.getElementById('status');
         let src = null;
         if (type === 'ok') src = 'img/code_ok.png';
-        else if (type === 'already') src = 'img/code_already.png';
+        else if (type === 'already') src = 'img/code_already.png'; // 這裡可能用不到，但保留相容性
         else if (type === 'invalid') src = 'img/code_invalid.png';
         else if (type === 'not_checkin') src = 'img/not_checkin.png';
+        
         if (src) {
             el.innerHTML = `<img src="${src}" style="width:80%">`;
         } else {
@@ -167,62 +170,51 @@ async function updateCheckin(id) {
         el.innerHTML = '';
     }
 
+    // --- 掃描處理 ---
     let resumeTimeout = null;
-async function onScanSuccess(decodedText) {
+    async function onScanSuccess(decodedText) {
         if (resumeTimeout) return;
         
-        // 暫停相機，避免重複掃描
+        // 1. 暫停相機
         html5QrCode.pause(true);
 
-        // 顯示處理中...
+        // 2. 顯示處理中
         const statusEl = document.getElementById('status');
-        statusEl.innerHTML = '<div style="color:yellow">⏳ 雲端驗證中...</div>';
+        statusEl.innerHTML = '<div class="msg-box" style="background:rgba(255,255,0,0.9); color:black;">⏳ 雲端驗證中...</div>';
 
-        // 直接呼叫 Google 大腦 (不檢查舊名單了)
+        // 3. 呼叫 Google
         try {
-            // 呼叫我們剛剛改好的 updateCheckin
-            await updateCheckin(decodedText); 
+            await updateCheckin(decodedText);
         } catch (e) {
-            console.error(e);
             setStatus('Server error');
         }
 
-        // 3秒後恢復掃描 (讓店員有時間看結果)
-        resumeTimeout = setTimeout(() => {
-            document.getElementById('status').innerHTML = ''; // 清空文字
-            document.getElementById('status').style.color = ''; 
-            html5QrCode.resume();
-            resumeTimeout = null;
-        }, 3000);
-    }
+        // 4. 設定 3 秒後恢復
         resumeTimeout = setTimeout(() => {
             clearStatus();
             html5QrCode.resume();
             resumeTimeout = null;
-        }, pauseMs);
+        }, 3000); // 這裡控制結果顯示秒數
     }
 
+    // --- 啟動相機 ---
     const qrboxFunction = function(viewfinderWidth, viewfinderHeight) {
-        let minEdgePercentage = 0.7; // 70%
+        let minEdgePercentage = 0.7;
         let minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
         let qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
-        return {
-            width: qrboxSize,
-            height: qrboxSize
-        };
+        return { width: qrboxSize, height: qrboxSize };
     };
 
     const html5QrCode = new Html5Qrcode('qr-reader');
     const config = { fps: 10, qrbox: qrboxFunction, aspectRatio: 1.0 };
 
-    loadParticipants().then(() => {
-        html5QrCode.start({ facingMode: 'environment' }, config, onScanSuccess)
-          .catch(err => {
-            console.warn('Falling back to default camera', err);
-            html5QrCode.start({ facingMode: 'user' }, config, onScanSuccess)
-              .catch(err2 => console.error(err2));
-          });
-    });
+    // 直接啟動相機，不再讀取 participants.txt
+    html5QrCode.start({ facingMode: 'environment' }, config, onScanSuccess)
+      .catch(err => {
+        console.warn('Falling back to default camera', err);
+        html5QrCode.start({ facingMode: 'user' }, config, onScanSuccess)
+          .catch(err2 => console.error(err2));
+      });
     </script>
 </body>
 </html>
