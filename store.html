@@ -114,14 +114,36 @@
         PARTICIPANTS = text.split(/\r?\n/).map(l => l.trim()).filter(l => l);
     }
 
-    async function updateCheckin(id) {
-        const res = await fetch('/checkin', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, store: storeIndex })
-        });
-        if (!res.ok) throw new Error('Server error');
-        return await res.json();
+async function updateCheckin(id) {
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbzhh_1BWbFNwumkrE7P3o0lwp5Ea6v9aCN3zK0DY__B3BOX_o47bAI6K5MLiMj2aF1b/exec";
+        
+        try {
+            const res = await fetch(GAS_URL, {
+                method: 'POST',
+                body: JSON.stringify({ id: id, storeName: storeName })
+            });
+            
+            const data = await res.json();
+            
+            const statusEl = document.getElementById('status');
+            
+            if (data.result === "ok") {
+                setStatus('ok');
+                statusEl.innerHTML += `<div style="color:white; font-size:16px; margin-top:5px;">${data.message}</div>`;
+            } else if (data.result === "invalid") {
+                setStatus('invalid');
+                statusEl.innerHTML += `<div style="color:red; font-size:16px; margin-top:5px;">${data.message}</div>`;
+            } else {
+                setStatus('Server error');
+            }
+            
+            return data;
+        } catch (e) {
+            console.error(e);
+            const statusEl = document.getElementById('status');
+            statusEl.innerHTML = `<h3 style="color:red">連線錯誤，請重試</h3>`;
+            return { result: 'error' };
+        }
     }
 
     function setStatus(type) {
