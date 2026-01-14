@@ -36,7 +36,21 @@
             pointer-events: none;
         }
 
-        /* --- 待機介面 --- */
+        /* --- 待機/啟動介面 (改為手動啟動) --- */
+        #state-start { 
+            background: #000; z-index: 20; pointer-events: auto;
+            justify-content: center; text-align: center;
+        }
+        .start-btn {
+            background: #1B9A4B; color: white; border: none; padding: 18px 50px;
+            font-size: 22px; font-weight: bold; border-radius: 50px; cursor: pointer;
+            box-shadow: 0 4px 20px rgba(27, 154, 75, 0.5);
+            transition: transform 0.1s;
+        }
+        .start-btn:active { transform: scale(0.95); }
+        .start-hint { color: #888; margin-top: 20px; font-size: 14px; }
+
+        /* --- 掃描中介面 --- */
         #state-scanning { background: rgba(0,0,0,0.1); }
         .scan-frame {
             position: relative; width: 260px; height: 260px;
@@ -48,19 +62,6 @@
             background: rgba(0,0,0,0.6); color: #fff; 
             border-radius: 50px; font-size: 16px; letter-spacing: 1px;
             backdrop-filter: blur(4px);
-        }
-
-        /* --- 錯誤/手動啟動介面 --- */
-        #state-error { 
-            background: #000; z-index: 20; pointer-events: auto;
-            justify-content: center; text-align: center;
-        }
-        .error-title { font-size: 24px; font-weight: bold; color: white; margin-bottom: 10px; }
-        .error-desc { color: #ccc; margin-bottom: 30px; font-size: 16px; max-width: 80%; }
-        .start-btn {
-            background: #1B9A4B; color: white; border: none; padding: 15px 40px;
-            font-size: 20px; border-radius: 50px; cursor: pointer;
-            box-shadow: 0 4px 15px rgba(27, 154, 75, 0.4);
         }
 
         /* --- 載入與結果介面 --- */
@@ -99,19 +100,23 @@
 <body>
     <div id="qr-reader"></div>
 
+    <div id="state-start" class="overlay-layer">
+        <div style="flex:1"></div>
+        <div>
+            <button class="start-btn" onclick="startCamera()">啟動掃描器</button>
+            <div class="start-hint">請點擊按鈕開啟相機</div>
+            <div class="start-hint" id="debug-msg" style="color:red; display:none;"></div>
+        </div>
+        <div style="flex:1"></div>
+        <div class="store-footer"></div>
+    </div>
+
     <div id="state-scanning" class="overlay-layer hidden">
         <div style="flex:1"></div>
         <div class="scan-frame"></div>
         <div class="scan-tip">請對準行動條碼</div>
         <div style="flex:1"></div>
         <div class="store-footer"></div>
-    </div>
-
-    <div id="state-error" class="overlay-layer hidden">
-        <div class="error-title">需要相機權限</div>
-        <div class="error-desc" id="error-text">請允許瀏覽器使用相機以進行掃描，<br>或點擊下方按鈕啟動。</div>
-        <button class="start-btn" onclick="startCamera()">啟動相機</button>
-        <div class="store-footer" style="position:absolute; bottom:30px;"></div>
     </div>
 
     <div id="state-loading" class="overlay-layer hidden">
@@ -139,10 +144,10 @@
     document.querySelectorAll('.store-footer').forEach(el => el.textContent = storeName);
 
     const states = { 
+        start: document.getElementById('state-start'),
         scan: document.getElementById('state-scanning'), 
         load: document.getElementById('state-loading'), 
-        result: document.getElementById('state-result'),
-        error: document.getElementById('state-error')
+        result: document.getElementById('state-result')
     };
     const resultCard = document.getElementById('result-card-body');
     const html5QrCode = new Html5Qrcode('qr-reader');
@@ -206,40 +211,38 @@
 
     function resetScan() { switchState('scan'); html5QrCode.resume(); isProcessing = false; }
 
+    // ★★★ 兼容性救援版啟動邏輯 ★★★
     function startCamera() {
-        switchState('scan');
+        const debugEl = document.getElementById('debug-msg');
+        debugEl.style.display = 'none';
 
-        // ★★★ 穩定飆速版設定 ★★★
+        // 1. 回歸最基本的設定：只設定 fps 和 qrbox
         const config = { 
-            fps: 15, // 頻率適中，不會過熱
-            // 1. 加回 qrbox：只分析中間 300x300 區域，大幅降低運算量 (手機不再卡頓)
-            qrbox: { width: 300, height: 300 },
-            // 2. 只找 QR Code：排除條碼、發票碼等干擾，速度再提升
-            formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
+            fps: 10, // 回到標準 10，最穩定
+            qrbox: { width: 250, height: 250 }, // 加回掃描框，找回靈敏度
+            aspectRatio: 1.0
         };
 
-        const cameraConfig = { 
-            facingMode: "environment",
-            videoConstraints: {
-                // 3. 解析度不強制 1080p，允許 640~1280 之間的流暢畫質
-                width: { min: 640, ideal: 1280 },
-                focusMode: "continuous"
-            }
-        };
+        // 2. 移除所有畫質限制，只要求「後鏡頭」
+        const cameraConfig = { facingMode: "environment" };
         
         html5QrCode.start(cameraConfig, config, onScanSuccess)
-            .catch(err => {
-                console.warn("後鏡頭啟動失敗", err);
-                return html5QrCode.start({ facingMode: "user" }, config, onScanSuccess);
+            .then(() => {
+                // 成功啟動後，切換介面
+                switchState('scan');
             })
-            .catch(err2 => {
-                switchState('error');
-                document.getElementById('error-text').innerHTML = "無法存取相機。<br>請檢查手機設定 > Chrome > 開啟相機權限。<br>錯誤: " + err2;
+            .catch(err => {
+                console.warn("後鏡頭失敗，嘗試前鏡頭", err);
+                // 如果後鏡頭失敗，嘗試前鏡頭
+                html5QrCode.start({ facingMode: "user" }, config, onScanSuccess)
+                    .then(() => switchState('scan'))
+                    .catch(err2 => {
+                        // 真的都不行，顯示錯誤
+                        debugEl.style.display = 'block';
+                        debugEl.innerHTML = "相機啟動失敗: " + err2;
+                    });
             });
     }
-
-    window.addEventListener('load', () => { setTimeout(startCamera, 100); });
-
     </script>
 </body>
 </html>
