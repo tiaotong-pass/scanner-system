@@ -2,121 +2,125 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>條通祭店家登入</title>
     <style>
-        /* --- 整體風格設定 (依照設計稿) --- */
+        /* --- 風格設定 --- */
         body {
             margin: 0; padding: 0;
-            background-color: #F0F0F0; /* 米色背景 */
+            background-color: #F0F0F0;
             font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif;
+            /* 強制絕對置中 */
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            height: 100vh;
-            border: 16px solid #231815; /* 深色邊框 */
+            min-height: 100vh;
+            border: 16px solid #231815;
             box-sizing: border-box;
+        }
+
+        /* --- 內容容器 --- */
+        .content-wrapper {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            width: 100%;
         }
 
         /* --- Logo 區域 --- */
         #logo-container { margin-bottom: 40px; text-align: center; }
-        #logo-img { width: 180px; height: auto; margin-bottom: 10px; }
+        #logo-img { width: 180px; height: auto; margin-bottom: 10px; min-height: 50px; }
         #logo-text { font-size: 14px; color: #59493F; letter-spacing: 1px; font-weight: bold; }
 
         /* --- 輸入框與按鈕 --- */
         .input-group {
             display: flex; flex-direction: column; gap: 20px;
             width: 80%; max-width: 320px;
+            align-items: center;
         }
 
-        /* 圓角輸入框 */
         #store-code {
-            width: 100%; padding: 15px;
-            border: none; border-radius: 50px;
-            background-color: #FFFFFF;
-            font-size: 18px; text-align: center; color: #333;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1); outline: none;
+            width: 100%; padding: 15px; border: none; border-radius: 50px;
+            background-color: #FFFFFF; font-size: 18px; text-align: center; color: #333;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1); outline: none; box-sizing: border-box;
         }
-        #store-code::placeholder { color: #CECECE; }
-
-        /* 綠色大按鈕 */
         #login-btn {
-            width: 100%; padding: 15px;
-            border: none; border-radius: 50px;
-            background-color: #1B9A4B; /* 設計稿的綠色 */
-            font-size: 20px; font-weight: bold; color: white;
+            width: 100%; padding: 15px; border: none; border-radius: 50px;
+            background-color: #1B9A4B; font-size: 20px; font-weight: bold; color: white;
             cursor: pointer; box-shadow: 0 4px 10px rgba(27, 154, 75, 0.3);
-            transition: background-color 0.2s;
+            transition: background-color 0.2s; box-sizing: border-box;
         }
         #login-btn:active { background-color: #147A3B; }
 
         /* --- 錯誤訊息 --- */
         #error-msg {
-            margin-top: 25px;
-            color: #C0392B; /* 設計稿的紅色 */
-            font-weight: bold; font-size: 16px;
-            display: none; /* 預設隱藏 */
-            align-items: center; gap: 5px;
+            margin-top: 25px; color: #C0392B; font-weight: bold; font-size: 16px;
+            display: none; align-items: center; gap: 5px;
         }
-        #error-msg::before { content: "✖"; font-size: 14px; }
     </style>
 </head>
 <body>
-    <div id="logo-container">
-        <img id="logo-img" src="img/logo.png" alt="TAIPEI TIAOTONG Logo" onerror="this.style.display='none';">
-        <div id="logo-text">臺北市條通商圈產業發展促進會</div>
-    </div>
+    <div class="content-wrapper">
+        <div id="logo-container">
+            <img id="logo-img" src="img/logo.png" alt="LOGO" onerror="this.style.opacity=0.3;">
+            <div id="logo-text">臺北市條通商圈產業發展促進會</div>
+        </div>
 
-    <div class="input-group">
-        <input type="text" id="store-code" placeholder="請輸入店家密碼" inputmode="numeric">
-        <button id="login-btn">登入熟客券系統</button>
-    </div>
+        <div class="input-group">
+            <input type="text" id="store-code" placeholder="請輸入店家密碼" inputmode="numeric">
+            <button id="login-btn">登入熟客券系統</button>
+        </div>
 
-    <div id="error-msg">查無此碼或密碼錯誤</div>
+        <div id="error-msg"></div>
+    </div>
 
     <script>
         let storeData = {};
-
-        // 載入店家資料 (從 store_table.txt)
-        fetch('store_table.txt')
-            .then(res => res.json())
-            .then(data => { storeData = data; })
-            .catch(err => {
-                console.error("無法載入店家名單:", err);
-                alert("系統錯誤：無法載入店家名單，請聯繫管理員。");
-            });
-
         const loginBtn = document.getElementById('login-btn');
         const codeInput = document.getElementById('store-code');
         const errorMsg = document.getElementById('error-msg');
+
+        // ★★★ 讀取外部檔案 (加強版) ★★★
+        // 加上 ?v=時間戳記，強制瀏覽器不使用快取，保證讀到最新名單
+        fetch('store_table.txt?v=' + new Date().getTime())
+            .then(res => {
+                if (!res.ok) throw new Error("找不到名單檔案");
+                return res.json();
+            })
+            .then(data => {
+                storeData = data;
+                console.log("店家名單載入成功", Object.keys(data).length + " 筆");
+            })
+            .catch(err => {
+                console.error("載入失敗:", err);
+                errorMsg.style.display = 'flex';
+                errorMsg.textContent = "⚠️ 系統載入中或格式錯誤，請重新整理";
+            });
 
         loginBtn.addEventListener('click', performLogin);
         codeInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') performLogin(); });
 
         function performLogin() {
             const inputCode = codeInput.value.trim();
-            errorMsg.style.display = 'none'; // 先隱藏錯誤
+            errorMsg.style.display = 'none';
 
-            if (!storeData || Object.keys(storeData).length === 0) {
-                alert("資料尚未載入完成，請稍後再試。");
+            // 檢查名單是否已載入
+            if (Object.keys(storeData).length === 0) {
+                errorMsg.style.display = 'flex';
+                errorMsg.textContent = "⏳ 資料載入中，請稍後再試...";
+                // 嘗試重新載入
+                location.reload(); 
                 return;
             }
 
-            // 比對密碼
             let foundStoreName = null;
             for (const [name, code] of Object.entries(storeData)) {
-                if (code === inputCode) {
-                    foundStoreName = name;
-                    break;
-                }
+                if (code === inputCode) { foundStoreName = name; break; }
             }
 
             if (foundStoreName) {
-                // 登入成功，儲存資訊並跳轉
                 localStorage.setItem('storeName', foundStoreName);
-                localStorage.setItem('storeIndex', inputCode); // 這裡用密碼當作索引
+                localStorage.setItem('storeIndex', inputCode);
                 location.href = 'store.html';
             } else {
-                // 登入失敗，顯示錯誤訊息
                 errorMsg.style.display = 'flex';
+                errorMsg.textContent = "✖ 密碼錯誤，請重新輸入";
                 codeInput.value = '';
                 codeInput.focus();
             }
