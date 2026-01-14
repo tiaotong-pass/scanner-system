@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>條通熟客券核銷掃描</title>
+    <title>條通祭核銷掃描</title>
     <style>
         /* --- 全域設定 --- */
         html, body {
@@ -50,7 +50,7 @@
             backdrop-filter: blur(4px);
         }
 
-        /* --- 錯誤/手動啟動介面 (新增) --- */
+        /* --- 錯誤/手動啟動介面 --- */
         #state-error { 
             background: #000; z-index: 20; pointer-events: auto;
             justify-content: center; text-align: center;
@@ -206,40 +206,39 @@
 
     function resetScan() { switchState('scan'); html5QrCode.resume(); isProcessing = false; }
 
-    // --- 相機啟動邏輯 (相容性增強版) ---
     function startCamera() {
-        // 先切換到待機畫面，隱藏錯誤按鈕
         switchState('scan');
 
+        // ★★★ 穩定飆速版設定 ★★★
         const config = { 
-            fps: 20, 
-            experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+            fps: 15, // 頻率適中，不會過熱
+            // 1. 加回 qrbox：只分析中間 300x300 區域，大幅降低運算量 (手機不再卡頓)
+            qrbox: { width: 300, height: 300 },
+            // 2. 只找 QR Code：排除條碼、發票碼等干擾，速度再提升
+            formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
         };
 
         const cameraConfig = { 
             facingMode: "environment",
-            videoConstraints: { width: { ideal: 1280 }, height: { ideal: 720 } }
+            videoConstraints: {
+                // 3. 解析度不強制 1080p，允許 640~1280 之間的流暢畫質
+                width: { min: 640, ideal: 1280 },
+                focusMode: "continuous"
+            }
         };
         
         html5QrCode.start(cameraConfig, config, onScanSuccess)
             .catch(err => {
-                console.warn("後鏡頭啟動失敗，嘗試前鏡頭", err);
-                // 嘗試前鏡頭
+                console.warn("後鏡頭啟動失敗", err);
                 return html5QrCode.start({ facingMode: "user" }, config, onScanSuccess);
             })
             .catch(err2 => {
-                console.error("相機啟動完全失敗", err2);
-                // 顯示手動啟動畫面
                 switchState('error');
-                document.getElementById('error-text').innerHTML = "無法存取相機。<br>請檢查手機設定 > Chrome > 開啟相機權限。<br>錯誤資訊: " + err2;
+                document.getElementById('error-text').innerHTML = "無法存取相機。<br>請檢查手機設定 > Chrome > 開啟相機權限。<br>錯誤: " + err2;
             });
     }
 
-    // 頁面載入時嘗試自動啟動
-    window.addEventListener('load', () => {
-        // 先給它一點時間緩衝，避免 iOS 判定為自動播放而擋下
-        setTimeout(startCamera, 100); 
-    });
+    window.addEventListener('load', () => { setTimeout(startCamera, 100); });
 
     </script>
 </body>
