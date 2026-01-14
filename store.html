@@ -168,31 +168,33 @@ async function updateCheckin(id) {
     }
 
     let resumeTimeout = null;
-    async function onScanSuccess(decodedText) {
+async function onScanSuccess(decodedText) {
         if (resumeTimeout) return;
+        
+        // 暫停相機，避免重複掃描
         html5QrCode.pause(true);
 
-        let pauseMs = 1000;
-        if (PARTICIPANTS.includes(decodedText)) {
-            try {
-                const data = await updateCheckin(decodedText);
-                if (data.notCheckin) {
-                    setStatus('not_checkin');
-                    pauseMs = 1000;
-                } else if (data.already) {
-                    setStatus('already');
-                    pauseMs = 1000;
-                } else {
-                    setStatus('ok');
-                    pauseMs = 3000;
-                }
-            } catch (e) {
-                setStatus('Server error');
-            }
-        } else {
-            setStatus('invalid');
-            pauseMs = 1000;
+        // 顯示處理中...
+        const statusEl = document.getElementById('status');
+        statusEl.innerHTML = '<div style="color:yellow">⏳ 雲端驗證中...</div>';
+
+        // 直接呼叫 Google 大腦 (不檢查舊名單了)
+        try {
+            // 呼叫我們剛剛改好的 updateCheckin
+            await updateCheckin(decodedText); 
+        } catch (e) {
+            console.error(e);
+            setStatus('Server error');
         }
+
+        // 3秒後恢復掃描 (讓店員有時間看結果)
+        resumeTimeout = setTimeout(() => {
+            document.getElementById('status').innerHTML = ''; // 清空文字
+            document.getElementById('status').style.color = ''; 
+            html5QrCode.resume();
+            resumeTimeout = null;
+        }, 3000);
+    }
         resumeTimeout = setTimeout(() => {
             clearStatus();
             html5QrCode.resume();
