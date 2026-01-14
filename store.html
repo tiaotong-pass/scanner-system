@@ -2,219 +2,258 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>2025條通祭：店家兌換檢核頁面</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>條通祭核銷掃描</title>
     <style>
-        html, body { width: 100%; height: 100%; margin: 0; padding: 0; }
+        /* --- 全域設定 --- */
         body {
-            font-family: sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background-color: #333;
-            background-image: url('img/bg.png');
-            background-repeat: no-repeat;
-            background-position: top center;
-            background-size: auto 100%;
+            margin: 0; padding: 0;
+            background-color: #000; /* 全黑背景 */
+            font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif;
+            display: flex; flex-direction: column;
+            height: 100vh; overflow: hidden;
         }
-        @media (max-width: 999px) {
-            body {
-                background-size: 100% auto;
-                background-position: center 15%;
-                overflow: hidden;
-            }
-        }
-        #main-container {
-            width: 100%;
-            max-width: 400px;
-            padding: 1em;
-            box-sizing: border-box;
-            text-align: center;
-        }
-        #camera-wrapper {
-            position: relative;
-            width: 80%;
-            background: url('img/camera.png') no-repeat center center;
-            background-size: 76% 97%;
-            margin: 0 auto;
-            padding-top: 10%;
-            padding-right: 3%;
-            padding-bottom: 3%;
+
+        /* --- 相機容器 (底層) --- */
+        #camera-view {
+            flex: 1; position: relative;
+            display: flex; justify-content: center; align-items: center;
         }
         #qr-reader {
-            width: 70%;
-            margin: auto;
-            aspect-ratio: 1 / 1;
-            overflow: hidden;
-            border-radius: 10px;
+            width: 100%; height: 100%; object-fit: cover;
+            position: absolute; top: 0; left: 0; z-index: 1;
         }
-        #qr-reader video {
-            object-fit: cover;
-            width: 100%;
-            height: 100%;
+
+        /* --- 介面圖層 (覆蓋在相機上) --- */
+        .overlay-layer {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 10; /* 在相機之上 */
+            display: flex; flex-direction: column;
+            justify-content: space-between; align-items: center;
+            padding: 40px 20px; box-sizing: border-box;
+            pointer-events: none; /* 讓點擊穿透到相機 */
+            transition: all 0.3s ease;
         }
-        h1 { color: #ffffff; }
-        #store-name {
-            display: block;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 80vw;
-            margin: 0 auto;
+
+        /* --- 狀態 1: 待機掃描中 --- */
+        #state-scanning { background: rgba(0,0,0,0.3); }
+        .scan-frame {
+            width: 280px; height: 280px;
+            border: 2px solid rgba(255,255,255,0.7); border-radius: 20px;
+            box-shadow: 0 0 0 1000px rgba(0,0,0,0.5); /* 外部遮罩 */
         }
-        #status {
-            margin-top: 20px;
-            font-weight: bold;
-            min-height: 50px;
-            text-shadow: 1px 1px 2px black;
+        .scan-tip {
+            margin-top: 20px; padding: 10px 20px;
+            background: rgba(0,0,0,0.6); color: #fff; border-radius: 50px;
+            font-size: 16px;
         }
-        .msg-box {
-            padding: 10px;
-            border-radius: 8px;
-            margin-top: 10px;
-            display: inline-block;
+
+        /* --- 狀態 2: 處理中 (Loading) --- */
+        #state-loading { background: rgba(0,0,0,0.7); color: white; }
+        .loading-spinner { font-size: 50px; animation: spin 1s infinite linear; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        /* --- 狀態 3: 結果訊息卡片 (成功/失敗) --- */
+        .result-card {
+            width: 85%; max-width: 340px;
+            padding: 30px 20px; border-radius: 16px;
+            text-align: center; color: white;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            pointer-events: auto; /* 卡片可以點擊 */
+            transform: translateY(20px); opacity: 0; transition: all 0.4s ease-out;
         }
+        /* 卡片出現動畫 */
+        .result-card.show { transform: translateY(0); opacity: 1; }
+
+        /* 成功樣式 (綠色) */
+        .card-success { background: linear-gradient(135deg, #2ecc71, #27ae60); }
+        .success-btn { background: #27ae60; }
+
+        /* 失敗/重複樣式 (紅色/黃色) */
+        .card-error { background: linear-gradient(135deg, #e74c3c, #c0392b); }
+        .error-btn { background: #c0392b; }
+        .card-warning { background: linear-gradient(135deg, #f1c40f, #f39c12); color: #333; }
+        .warning-btn { background: #d35400; color: white; }
+        
+        .result-title { font-size: 28px; font-weight: bold; margin: 15px 0; }
+        .result-desc { font-size: 16px; line-height: 1.5; opacity: 0.9; }
+        .card-btn {
+            margin-top: 25px; padding: 12px 30px;
+            border: none; border-radius: 50px;
+            font-size: 18px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+
+        /* --- 底部店家名稱 --- */
+        .store-footer {
+            color: rgba(255,255,255,0.6);
+            font-size: 16px; font-weight: bold;
+            padding-bottom: 20px;
+        }
+
+        /* --- 工具類 --- */
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
-    <div id="main-container">
-        <h1 style="padding-top: 3.5em;"><span id="store-name"></span></h1>
-        <div id="camera-wrapper">
-            <div id="qr-reader"></div>
-        </div>
-        <div id="status"></div>
+    <div id="camera-view">
+        <div id="qr-reader"></div>
     </div>
+
+    <div id="state-scanning" class="overlay-layer">
+        <div style="flex:1"></div> <div class="scan-frame"></div>
+        <div class="scan-tip">請對準行動條碼</div>
+        <div style="flex:1"></div> <div class="store-footer" id="footer-scan">載入中...</div>
+    </div>
+
+    <div id="state-loading" class="overlay-layer hidden">
+        <div style="flex:1"></div>
+        <div class="loading-spinner">⏳</div>
+        <div style="margin-top: 20px; font-size: 20px;">雲端驗證中...</div>
+        <div style="flex:1"></div>
+        <div class="store-footer" id="footer-load"></div>
+    </div>
+
+    <div id="state-result" class="overlay-layer hidden" style="background: rgba(0,0,0,0.8);">
+        <div style="flex:1"></div>
+        
+        <div id="result-card-body" class="result-card">
+            <div style="font-size: 60px;" id="res-icon">✅</div>
+            <div class="result-title" id="res-title">核銷成功</div>
+            <div class="result-desc" id="res-desc">
+                </div>
+            <button class="card-btn" id="res-btn" onclick="resetScan()">繼續掃描</button>
+        </div>
+
+        <div style="flex:1"></div>
+        <div class="store-footer" id="footer-res"></div>
+    </div>
+
+
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script>
-    // --- 設定區域 ---
-    const TOTAL_STORES = 47;
-    // 您的 Google Apps Script 網址 (已直接填入)
+    // --- 設定與初始化 ---
+    // 👇 請確認這是不是您最新的 Google Apps Script 網址
     const GAS_URL = "https://script.google.com/macros/s/AKfycbzhh_1BWbFNwumkrE7P3o0lwp5Ea6v9aCN3zK0DY__B3BOX_o47bAI6K5MLiMj2aF1b/exec";
-
-    // --- 初始化 ---
-    const storeIndex = parseInt(localStorage.getItem('storeIndex') || '0', 10);
-    const storeName = localStorage.getItem('storeName') || '';
     
-    // 如果沒有登入，跳轉回登入頁
-    if (!storeIndex || !storeName) {
-        location.href = 'store-login.html';
-    }
-    
-    const storeNameEl = document.getElementById('store-name');
-    storeNameEl.textContent = storeName;
+    const storeName = localStorage.getItem('storeName');
+    if (!storeName) { location.href = 'store-login.html'; }
 
-    // 調整字體大小
-    function adjustStoreNameFont() {
-        let size = 2.0;
-        storeNameEl.style.fontSize = size + 'em';
-        const maxWidth = Math.min(storeNameEl.parentElement.clientWidth, window.innerWidth * 0.8);
-        while (storeNameEl.scrollWidth > maxWidth && size > 0.5) {
-            size -= 0.1;
-            storeNameEl.style.fontSize = size.toFixed(1) + 'em';
+    // 將店名填入所有 footer
+    document.querySelectorAll('.store-footer').forEach(el => el.textContent = storeName);
+
+    // --- UI 切換控制 ---
+    const states = {
+        scan: document.getElementById('state-scanning'),
+        load: document.getElementById('state-loading'),
+        result: document.getElementById('state-result')
+    };
+    const resultCard = document.getElementById('result-card-body');
+
+    function switchState(stateName) {
+        Object.values(states).forEach(el => el.classList.add('hidden'));
+        states[stateName].classList.remove('hidden');
+        
+        if (stateName === 'result') {
+            setTimeout(() => resultCard.classList.add('show'), 50); // 觸發動畫
+        } else {
+            resultCard.classList.remove('show');
         }
     }
-    adjustStoreNameFont();
-    window.addEventListener('resize', adjustStoreNameFont);
+
+    // --- 顯示結果卡片 ---
+    function showResultCard(type, title, message) {
+        const icon = document.getElementById('res-icon');
+        const titleEl = document.getElementById('res-title');
+        const descEl = document.getElementById('res-desc');
+        const btn = document.getElementById('res-btn');
+
+        // 重置樣式
+        resultCard.className = 'result-card';
+        btn.className = 'card-btn';
+
+        // 根據類型設定樣式
+        if (type === 'success') {
+            resultCard.classList.add('card-success');
+            btn.classList.add('success-btn');
+            icon.textContent = '✅';
+            btn.textContent = '掃描成功';
+        } else if (type === 'warning') { // 重複核銷
+            resultCard.classList.add('card-warning');
+            btn.classList.add('warning-btn');
+            icon.textContent = '⚠️';
+            btn.textContent = '錯誤';
+        } else { // 其他失敗
+            resultCard.classList.add('card-error');
+            btn.classList.add('error-btn');
+            icon.textContent = '❌';
+            btn.textContent = '掃描失敗';
+        }
+
+        titleEl.textContent = title;
+        descEl.innerHTML = message; // 允許 HTML 以顯示換行
+        switchState('result');
+    }
 
     // --- 核心功能：呼叫 Google 大腦 ---
     async function updateCheckin(id) {
         try {
-            // 發送請求給 GAS (使用 text/plain 避免 CORS 問題)
             const res = await fetch(GAS_URL, {
                 method: 'POST',
                 body: JSON.stringify({ id: id, storeName: storeName })
             });
-            
             const data = await res.json();
-            const statusEl = document.getElementById('status');
-            
-            if (data.result === "ok") {
-                // 成功：顯示綠色勾勾
-                setStatus('ok'); 
-                statusEl.innerHTML += `<div class="msg-box" style="background:rgba(0,128,0,0.8); color:white;">${data.message}</div>`;
-            } else if (data.result === "invalid") {
-                // 失敗：顯示紅色叉叉
-                setStatus('invalid');
-                statusEl.innerHTML += `<div class="msg-box" style="background:rgba(255,0,0,0.8); color:white;">${data.message}</div>`;
-            } else {
-                setStatus('Server error');
-            }
             return data;
         } catch (e) {
             console.error(e);
-            document.getElementById('status').innerHTML = `<div class="msg-box" style="background:white; color:red;">連線失敗，請檢查網路</div>`;
-            return { result: 'error' };
+            return { result: 'error', message: '網路連線失敗，請檢查訊號' };
         }
     }
 
-    // --- 顯示狀態圖片 ---
-    function setStatus(type) {
-        const el = document.getElementById('status');
-        let src = null;
-        if (type === 'ok') src = 'img/code_ok.png';
-        else if (type === 'already') src = 'img/code_already.png'; // 這裡可能用不到，但保留相容性
-        else if (type === 'invalid') src = 'img/code_invalid.png';
-        else if (type === 'not_checkin') src = 'img/not_checkin.png';
-        
-        if (src) {
-            el.innerHTML = `<img src="${src}" style="width:80%">`;
-        } else {
-            el.style.color = 'red';
-            el.textContent = type;
-        }
-    }
+    // --- 掃描處理流程 ---
+    let isProcessing = false;
+    const html5QrCode = new Html5Qrcode('qr-reader');
 
-    function clearStatus() {
-        const el = document.getElementById('status');
-        el.textContent = '';
-        el.innerHTML = '';
-    }
-
-    // --- 掃描處理 ---
-    let resumeTimeout = null;
     async function onScanSuccess(decodedText) {
-        if (resumeTimeout) return;
-        
-        // 1. 暫停相機
+        if (isProcessing) return;
+        isProcessing = true;
         html5QrCode.pause(true);
+        switchState('load'); // 1. 切換到載入中
 
-        // 2. 顯示處理中
-        const statusEl = document.getElementById('status');
-        statusEl.innerHTML = '<div class="msg-box" style="background:rgba(255,255,0,0.9); color:black;">⏳ 雲端驗證中...</div>';
+        // 2. 呼叫 Google
+        const data = await updateCheckin(decodedText);
 
-        // 3. 呼叫 Google
-        try {
-            await updateCheckin(decodedText);
-        } catch (e) {
-            setStatus('Server error');
+        // 3. 根據結果顯示對應卡片
+        if (data.result === 'ok') {
+            // 成功：顯示綠色卡片
+            // data.message 裡已經包含了票種和日期，直接顯示
+            showResultCard('success', '請提供熟客優惠', data.message.replace('<br>', '<div style="margin-top:8px; font-size:0.9em">') + '</div>');
+        } else {
+            // 失敗：判斷是重複還是其他錯誤
+            if (data.message.includes('本店已核銷')) {
+                // 重複核銷：顯示黃色/橘色卡片
+                showResultCard('warning', '本條碼已核銷過', data.message);
+            } else {
+                // 其他錯誤 (過期、無效)：顯示紅色卡片
+                showResultCard('error', '本行動條碼無效', data.message.replace('<br>', '<div style="margin-top:8px">') + '</div>');
+            }
         }
+        // 注意：這裡不再自動恢復，需使用者點擊按鈕
+    }
 
-        // 4. 設定 3 秒後恢復
-        resumeTimeout = setTimeout(() => {
-            clearStatus();
-            html5QrCode.resume();
-            resumeTimeout = null;
-        }, 3000); // 這裡控制結果顯示秒數
+    // --- 恢復掃描 ---
+    function resetScan() {
+        switchState('scan');
+        html5QrCode.resume();
+        isProcessing = false;
     }
 
     // --- 啟動相機 ---
-    const qrboxFunction = function(viewfinderWidth, viewfinderHeight) {
-        let minEdgePercentage = 0.7;
-        let minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
-        let qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
-        return { width: qrboxSize, height: qrboxSize };
-    };
+    const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
+    html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+        .catch(() => html5QrCode.start({ facingMode: "user" }, config, onScanSuccess));
 
-    const html5QrCode = new Html5Qrcode('qr-reader');
-    const config = { fps: 10, qrbox: qrboxFunction, aspectRatio: 1.0 };
-
-    // 直接啟動相機，不再讀取 participants.txt
-    html5QrCode.start({ facingMode: 'environment' }, config, onScanSuccess)
-      .catch(err => {
-        console.warn('Falling back to default camera', err);
-        html5QrCode.start({ facingMode: 'user' }, config, onScanSuccess)
-          .catch(err2 => console.error(err2));
-      });
     </script>
 </body>
 </html>
