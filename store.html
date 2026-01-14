@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>條通祭核銷掃描</title>
     <style>
         /* --- 全域設定 --- */
@@ -11,17 +11,26 @@
             background-color: #000;
             font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif;
             width: 100%; height: 100%;
-            overflow: hidden;
+            overflow: hidden; /* 防止捲動 */
         }
 
-        /* --- 相機全螢幕 --- */
-        #qr-reader {
-            position: fixed; top: 0; left: 0;
-            width: 100%; height: 100%;
-            z-index: 0; background: #000;
+        /* --- 相機區域 (回歸舊版邏輯) --- */
+        #camera-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+            background: #000;
+            z-index: 0;
         }
+        #qr-reader {
+            width: 100%;
+            /* 這裡不強制 height: 100%，讓它保持比例，這樣才掃得到！ */
+            max-height: 100%; 
+        }
+        /* 讓影片水平置中，不要被硬拉變形 */
         #qr-reader video {
-            width: 100% !important; height: 100% !important; object-fit: cover !important;
+            object-fit: contain !important; 
+            max-width: 100% !important;
+            max-height: 100% !important;
         }
 
         /* --- 介面圖層 --- */
@@ -33,7 +42,7 @@
             padding: 40px 20px;
             padding-bottom: env(safe-area-inset-bottom, 40px);
             box-sizing: border-box;
-            pointer-events: none;
+            pointer-events: none; /* 讓點擊穿透 */
         }
 
         /* --- 1. 啟動按鈕介面 --- */
@@ -41,63 +50,44 @@
             background: #000; z-index: 20; pointer-events: auto;
             justify-content: center; text-align: center;
         }
-        .btn-group { display: flex; flex-direction: column; gap: 20px; width: 100%; align-items: center; }
-        
         .start-btn {
-            background: #1B9A4B; color: white; border: none; padding: 18px 40px;
-            font-size: 20px; font-weight: bold; border-radius: 50px; cursor: pointer;
+            background: #1B9A4B; color: white; border: none; padding: 18px 50px;
+            font-size: 22px; font-weight: bold; border-radius: 50px; cursor: pointer;
             box-shadow: 0 4px 20px rgba(27, 154, 75, 0.5);
-            width: 80%; max-width: 300px;
         }
-        
-        /* B計畫：系統相機按鈕 */
-        .file-btn {
-            background: #333; color: white; border: 1px solid #555; padding: 15px 40px;
-            font-size: 18px; border-radius: 50px; cursor: pointer;
-            width: 80%; max-width: 300px;
-            display: flex; align-items: center; justify-content: center; gap: 10px;
-        }
-        .file-btn::before { content: '📷'; }
-
-        .start-hint { color: #888; margin-top: 20px; font-size: 14px; line-height: 1.6; }
         .reload-link { color: #666; text-decoration: underline; font-size: 14px; margin-top: 30px; cursor: pointer; }
 
         /* --- 2. 掃描中介面 --- */
-        #state-scanning { background: rgba(0,0,0,0.1); }
+        #state-scanning { background: rgba(0,0,0,0.3); } /* 半透明黑底 */
+        
         .scan-frame {
             position: relative; width: 250px; height: 250px;
-            border: 2px solid rgba(255,255,255,0.9); border-radius: 20px;
-            box-shadow: 0 0 0 4000px rgba(0,0,0,0.6); 
+            border: 2px solid rgba(255,255,255,0.8); border-radius: 20px;
+            /* 這裡拿掉那個厚重的陰影，避免造成視覺干擾，舊版就沒有那個 */
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
         }
         .scan-tip {
             margin-top: 20px; padding: 8px 24px;
             background: rgba(0,0,0,0.6); color: #fff; 
             border-radius: 50px; font-size: 16px; letter-spacing: 1px;
-            backdrop-filter: blur(4px);
         }
 
-        /* --- 3. 載入中 --- */
+        /* --- 3. 載入與結果 --- */
         #state-loading { background: rgba(0,0,0,0.85); color: white; justify-content: center; }
-        .loading-spinner { font-size: 50px; animation: spin 1s infinite linear; margin-bottom: 20px; display: block; }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
-
-        /* --- 4. 結果顯示 --- */
         .result-card {
             width: 90%; max-width: 320px;
             padding: 30px 20px; border-radius: 20px;
             text-align: center; color: white;
             box-shadow: 0 20px 50px rgba(0,0,0,0.8);
-            pointer-events: auto; opacity: 0; transition: opacity 0.3s ease-out;
-            background: #222;
+            pointer-events: auto; background: #222;
+            display: none; /* 預設隱藏 */
         }
-        .result-card.show { opacity: 1; }
+        #state-result { background: rgba(0,0,0,0.85); justify-content: center; }
 
+        /* 結果卡片樣式 */
         .card-success { background: linear-gradient(135deg, #2ecc71, #27ae60); }
-        .success-btn { background: #219150; color: white; }
         .card-error { background: linear-gradient(135deg, #e74c3c, #c0392b); }
-        .error-btn { background: #962d22; color: white; }
         .card-warning { background: linear-gradient(135deg, #f1c40f, #f39c12); color: #222; }
-        .warning-btn { background: #d35400; color: white; }
         
         .result-title { font-size: 26px; font-weight: bold; margin: 15px 0 10px 0; }
         .result-desc { font-size: 16px; line-height: 1.5; opacity: 0.95; margin-bottom: 20px;}
@@ -106,28 +96,22 @@
             font-size: 18px; font-weight: bold; cursor: pointer;
             box-shadow: 0 4px 10px rgba(0,0,0,0.2);
         }
+
         .store-footer { color: rgba(255,255,255,0.6); font-size: 14px; font-weight: bold; text-align: center; }
-        .hidden { display: none !important; opacity: 0; }
-        
-        /* 隱藏的檔案輸入框 */
-        #qr-input-file { display: none; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
-    <div id="qr-reader"></div>
+    <div id="camera-container">
+        <div id="qr-reader"></div>
+    </div>
 
     <div id="state-start" class="overlay-layer">
         <div style="flex:1"></div>
-        <div class="btn-group">
-            <button id="btn-start" class="start-btn" onclick="startScannerFresh()">啟動掃描器</button>
-            
-            <button class="file-btn" onclick="document.getElementById('qr-input-file').click()">使用系統相機拍照</button>
-            <input type="file" id="qr-input-file" accept="image/*" capture="environment" onchange="scanFromFile(this)">
-            
-            <div class="start-hint" id="status-msg">
-                請點擊綠色按鈕開啟。<br>若無法啟動，請改用「系統相機拍照」。
-            </div>
-            <div class="reload-link" onclick="location.reload()">頁面卡住？點此重新整理</div>
+        <div>
+            <button id="btn-start" class="start-btn" onclick="startCamera()">啟動掃描器</button>
+            <div style="margin-top:20px; color:#888;">請點擊按鈕開啟相機</div>
+            <div class="reload-link" onclick="location.reload()">重新整理</div>
         </div>
         <div style="flex:1"></div>
         <div class="store-footer"></div>
@@ -142,18 +126,15 @@
     </div>
 
     <div id="state-loading" class="overlay-layer hidden">
-        <div style="text-align: center;">
-            <span class="loading-spinner">⏳</span>
-            <div style="font-size: 20px; font-weight:bold;">雲端驗證中...</div>
-        </div>
+        <div style="font-size: 20px; font-weight:bold;">雲端驗證中...</div>
     </div>
 
-    <div id="state-result" class="overlay-layer hidden" style="background: rgba(0,0,0,0.85); justify-content: center;">
+    <div id="state-result" class="overlay-layer hidden">
         <div id="result-card-body" class="result-card">
             <div style="font-size: 60px;" id="res-icon">✅</div>
             <div class="result-title" id="res-title"></div>
             <div class="result-desc" id="res-desc"></div>
-            <button class="card-btn" id="res-btn" onclick="resetScan()"></button>
+            <button class="card-btn" id="res-btn" onclick="resetScan()">繼續掃描</button>
         </div>
         <div class="store-footer" style="position: absolute; bottom: 40px;"></div>
     </div>
@@ -165,141 +146,99 @@
     if (!storeName) { location.href = 'store-login.html'; }
     document.querySelectorAll('.store-footer').forEach(el => el.textContent = storeName);
 
-    const states = { 
-        start: document.getElementById('state-start'),
-        scan: document.getElementById('state-scanning'), 
-        load: document.getElementById('state-loading'), 
-        result: document.getElementById('state-result')
-    };
+    // 全域變數：只初始化一次！
+    const html5QrCode = new Html5Qrcode("qr-reader");
     const resultCard = document.getElementById('result-card-body');
-    
-    // 全域變數
-    let html5QrCode = null; 
-    let isProcessing = false;
 
+    // UI 切換
     function switchState(stateName) {
-        Object.values(states).forEach(el => el.classList.add('hidden'));
-        states[stateName].classList.remove('hidden');
+        document.getElementById('state-start').classList.add('hidden');
+        document.getElementById('state-scanning').classList.add('hidden');
+        document.getElementById('state-loading').classList.add('hidden');
+        document.getElementById('state-result').classList.add('hidden');
+        
+        document.getElementById('state-' + stateName).classList.remove('hidden');
+
         if (stateName === 'result') {
-            setTimeout(() => resultCard.classList.add('show'), 10);
-        } else {
-            resultCard.classList.remove('show');
+            resultCard.style.display = 'block';
         }
     }
 
-    function showResultCard(type, title, message) {
-        const icon = document.getElementById('res-icon');
-        const titleEl = document.getElementById('res-title');
-        const descEl = document.getElementById('res-desc');
-        const btn = document.getElementById('res-btn');
-        resultCard.className = 'result-card';
-        btn.className = 'card-btn';
-
-        if (type === 'success') {
-            resultCard.classList.add('card-success'); btn.classList.add('success-btn');
-            icon.textContent = '✅'; btn.textContent = '掃描成功';
-        } else if (type === 'warning') {
-            resultCard.classList.add('card-warning'); btn.classList.add('warning-btn');
-            icon.textContent = '⚠️'; btn.textContent = '錯誤';
-        } else {
-            resultCard.classList.add('card-error'); btn.classList.add('error-btn');
-            icon.textContent = '❌'; btn.textContent = '掃描失敗';
-        }
-        titleEl.textContent = title; descEl.innerHTML = message;
-        switchState('result');
-    }
-
-    async function updateCheckin(id) {
-        try {
-            const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ id: id, storeName: storeName }) });
-            return await res.json();
-        } catch (e) { return { result: 'error', message: '網路連線失敗' }; }
-    }
-
-    async function onScanSuccess(decodedText) {
-        if (isProcessing) return;
-        isProcessing = true;
+    // 啟動相機 (完全使用舊版邏輯)
+    function startCamera() {
+        document.getElementById('btn-start').innerText = "啟動中...";
         
-        // 暫停掃描
-        if (html5QrCode) {
-            try { await html5QrCode.stop(); } catch(e){}
-        }
-        
-        switchState('load');
-        const data = await updateCheckin(decodedText);
-        
-        if (data.result === 'ok') {
-            showResultCard('success', '請提供熟客優惠', data.message.replace('<br>', '<div style="margin-top:8px; font-size:0.9em">') + '</div>');
-        } else {
-            if (data.message.includes('本店已核銷')) {
-                showResultCard('warning', '本條碼已核銷過', data.message);
-            } else {
-                showResultCard('error', '本行動條碼無效', data.message.replace('<br>', '<div style="margin-top:8px">') + '</div>');
-            }
-        }
-    }
-
-    function resetScan() { 
-        // 重置時，我們會完全銷毀舊的實例，等待下次按下啟動
-        // 這樣可以避免 Safari 的狀態鎖死問題
-        html5QrCode = null;
-        isProcessing = false;
-        switchState('start'); 
-    }
-
-    // ★★★ A計畫：全新啟動 (解決 Safari 狀態問題) ★★★
-    function startScannerFresh() {
-        const btn = document.getElementById('btn-start');
-        const statusMsg = document.getElementById('status-msg');
-        btn.disabled = true;
-        btn.textContent = "啟動中...";
-
-        // 每次點擊都 new 一個新的實例，確保沒有舊狀態殘留
-        html5QrCode = new Html5Qrcode("qr-reader");
-
-        // 設定：加回 qrbox: 250 (解決靈敏度0的問題)
+        // 舊版最簡單的設定：不指定解析度、不指定 aspectRatio
         const config = { 
             fps: 10, 
-            qrbox: { width: 250, height: 250 },
-            aspectRatio: 1.0
+            qrbox: { width: 250, height: 250 } 
         };
 
-        // 啟動
-        html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
-            .then(() => {
-                switchState('scan');
-                btn.textContent = "啟動掃描器";
-                btn.disabled = false;
-            })
-            .catch(err => {
-                console.error(err);
-                btn.disabled = false;
-                btn.textContent = "啟動失敗";
-                statusMsg.innerHTML = `<span style="color:#ff5555">啟動失敗。請點擊下方的「使用系統相機拍照」來掃描。</span>`;
-            });
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            config, 
+            onScanSuccess
+        ).then(() => {
+            switchState('scanning'); // 成功後切換介面
+            document.getElementById('btn-start').innerText = "啟動掃描器";
+        }).catch(err => {
+            alert("相機啟動失敗：" + err);
+            document.getElementById('btn-start').innerText = "啟動失敗，點此重試";
+            location.reload(); // 失敗直接重整，這是解決 Safari 卡死的最好方法
+        });
     }
 
-    // ★★★ B計畫：系統相機 (Fallback) ★★★
-    function scanFromFile(input) {
-        if (input.files.length === 0) return;
-        
-        const file = input.files[0];
-        isProcessing = true;
-        switchState('load');
+    // 掃描成功
+    function onScanSuccess(decodedText) {
+        // 暫停掃描
+        html5QrCode.pause(true);
+        switchState('loading');
 
-        // 使用 html5-qrcode 的檔案掃描功能
-        // 這裡也需要一個實例，我們臨時 new 一個
-        const tempScanner = new Html5Qrcode("qr-reader");
-        
-        tempScanner.scanFile(file, true)
-            .then(decodedText => {
-                onScanSuccess(decodedText);
-            })
-            .catch(err => {
-                isProcessing = false;
-                switchState('start');
-                alert("圖片中找不到 QR Code，請重拍一張清楚的，或是對準一點。");
-            });
+        fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify({ id: decodedText, storeName: storeName })
+        })
+        .then(res => res.json())
+        .then(data => {
+            showResult(data);
+        })
+        .catch(err => {
+            showResult({ result: 'error', message: '網路錯誤' });
+        });
+    }
+
+    // 顯示結果
+    function showResult(data) {
+        switchState('result');
+        const titleEl = document.getElementById('res-title');
+        const descEl = document.getElementById('res-desc');
+        const iconEl = document.getElementById('res-icon');
+        const btn = document.getElementById('res-btn');
+
+        resultCard.className = 'result-card'; // 重置 class
+
+        if (data.result === 'ok') {
+            resultCard.classList.add('card-success');
+            iconEl.innerText = '✅';
+            titleEl.innerText = '核銷成功';
+            descEl.innerHTML = data.message;
+        } else if (data.message && data.message.includes('本店已核銷')) {
+            resultCard.classList.add('card-warning');
+            iconEl.innerText = '⚠️';
+            titleEl.innerText = '重複核銷';
+            descEl.innerHTML = data.message;
+        } else {
+            resultCard.classList.add('card-error');
+            iconEl.innerText = '❌';
+            titleEl.innerText = '無效票券';
+            descEl.innerHTML = data.message || '查無資料';
+        }
+    }
+
+    // 繼續掃描
+    function resetScan() {
+        switchState('scanning');
+        html5QrCode.resume();
     }
     </script>
 </body>
