@@ -10,7 +10,6 @@
             margin: 0; padding: 0;
             background-color: #F0F0F0;
             font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif;
-            /* 強制絕對置中 */
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             min-height: 100vh;
             border: 16px solid #231815;
@@ -47,6 +46,7 @@
             transition: background-color 0.2s; box-sizing: border-box;
         }
         #login-btn:active { background-color: #147A3B; }
+        #login-btn:disabled { background-color: #ccc; cursor: not-allowed; } /* 新增禁用樣式 */
 
         /* --- 錯誤訊息 --- */
         #error-msg {
@@ -71,13 +71,15 @@
     </div>
 
     <script>
+        // ★★★ 設定：請填入您的 Google Apps Script 網址 ★★★
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbzhh_1BWbFNwumkrE7P3o0lwp5Ea6v9aCN3zK0DY__B3BOX_o47bAI6K5MLiMj2aF1b/exec";
+
         let storeData = {};
         const loginBtn = document.getElementById('login-btn');
         const codeInput = document.getElementById('store-code');
         const errorMsg = document.getElementById('error-msg');
 
-        // ★★★ 讀取外部檔案 (加強版) ★★★
-        // 加上 ?v=時間戳記，強制瀏覽器不使用快取，保證讀到最新名單
+        // 讀取外部檔案
         fetch('store_table.txt?v=' + new Date().getTime())
             .then(res => {
                 if (!res.ok) throw new Error("找不到名單檔案");
@@ -104,7 +106,6 @@
             if (Object.keys(storeData).length === 0) {
                 errorMsg.style.display = 'flex';
                 errorMsg.textContent = "⏳ 資料載入中，請稍後再試...";
-                // 嘗試重新載入
                 location.reload(); 
                 return;
             }
@@ -115,10 +116,39 @@
             }
 
             if (foundStoreName) {
+                // --- 登入成功 ---
+                
+                // 1. UI 變更：避免使用者重複點擊，給予回饋
+                loginBtn.innerText = "驗證成功，登入中...";
+                loginBtn.disabled = true;
+
+                // 2. 寫入本地儲存
                 localStorage.setItem('storeName', foundStoreName);
                 localStorage.setItem('storeIndex', inputCode);
-                location.href = 'store.html';
+
+                // 3. ★★★ 關鍵修改：發送登入紀錄給 GAS ★★★
+                // 使用 no-cors 模式發後不理，速度最快
+                try {
+                    fetch(GAS_URL, {
+                        method: "POST",
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: "login",       // 告訴後端這是登入動作
+                            storeName: foundStoreName // 說是哪家店
+                        })
+                    });
+                } catch (e) {
+                    console.error("Log發送失敗，但不影響登入");
+                }
+
+                // 4. 延遲跳轉 (為了確保上面的 fetch 訊號有時間發出去)
+                setTimeout(() => {
+                    location.href = 'store.html';
+                }, 500); // 延遲 0.5 秒
+                
             } else {
+                // --- 登入失敗 ---
                 errorMsg.style.display = 'flex';
                 errorMsg.textContent = "✖ 密碼錯誤，請重新輸入";
                 codeInput.value = '';
