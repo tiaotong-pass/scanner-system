@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>條通祭店家登入</title>
+    <title>系統已停用</title>
     <style>
         /* --- 風格設定 --- */
         body {
@@ -20,38 +20,51 @@
         .content-wrapper {
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             width: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+            text-align: center;
         }
 
         /* --- Logo 區域 --- */
-        #logo-container { margin-bottom: 40px; text-align: center; }
+        #logo-container { margin-bottom: 30px; }
         #logo-img { width: 180px; height: auto; margin-bottom: 10px; min-height: 50px; }
         #logo-text { font-size: 14px; color: #59493F; letter-spacing: 1px; font-weight: bold; }
 
-        /* --- 輸入框與按鈕 --- */
-        .input-group {
-            display: flex; flex-direction: column; gap: 20px;
-            width: 80%; max-width: 320px;
+        /* --- 訊息卡片 --- */
+        .message-box {
+            background-color: #FFFFFF;
+            padding: 30px 20px;
+            border-radius: 16px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            width: 80%;
+            max-width: 320px;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
             align-items: center;
         }
 
-        #store-code {
-            width: 100%; padding: 15px; border: none; border-radius: 50px;
-            background-color: #FFFFFF; font-size: 18px; text-align: center; color: #333;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1); outline: none; box-sizing: border-box;
+        .alert-text {
+            font-size: 18px;
+            color: #C0392B; /* 使用紅色強調停用訊息 */
+            font-weight: bold;
+            line-height: 1.6;
         }
-        #login-btn {
-            width: 100%; padding: 15px; border: none; border-radius: 50px;
-            background-color: #1B9A4B; font-size: 20px; font-weight: bold; color: white;
-            cursor: pointer; box-shadow: 0 4px 10px rgba(27, 154, 75, 0.3);
-            transition: background-color 0.2s; box-sizing: border-box;
-        }
-        #login-btn:active { background-color: #147A3B; }
-        #login-btn:disabled { background-color: #ccc; cursor: not-allowed; } /* 新增禁用樣式 */
 
-        /* --- 錯誤訊息 --- */
-        #error-msg {
-            margin-top: 25px; color: #C0392B; font-weight: bold; font-size: 16px;
-            display: none; align-items: center; gap: 5px;
+        /* --- 新系統導向按鈕 --- */
+        .redirect-btn {
+            width: 100%; padding: 15px; border: none; border-radius: 50px;
+            background-color: #1B9A4B; font-size: 18px; font-weight: bold; color: white;
+            cursor: pointer; box-shadow: 0 4px 10px rgba(27, 154, 75, 0.3);
+            transition: background-color 0.2s, transform 0.1s; 
+            box-sizing: border-box;
+            text-decoration: none; /* 確保作為連結沒有底線 */
+            display: inline-block;
+        }
+        
+        .redirect-btn:active { 
+            background-color: #147A3B; 
+            transform: scale(0.98); /* 點擊時的微縮放回饋 */
         }
     </style>
 </head>
@@ -62,99 +75,13 @@
             <div id="logo-text">臺北市條通商圈產業發展促進會</div>
         </div>
 
-        <div class="input-group">
-            <input type="text" id="store-code" placeholder="請輸入店家密碼" inputmode="numeric">
-            <button id="login-btn">登入熟客券系統</button>
+        <div class="message-box">
+            <div class="alert-text">
+                本系統已停用<br>請移駕至新掃描系統
+            </div>
+            
+            <a href="https://tiaotong.binotalk.com/login" class="redirect-btn">點擊前往</a>
         </div>
-
-        <div id="error-msg"></div>
     </div>
-
-    <script>
-        // ★★★ 設定：請填入您的 Google Apps Script 網址 ★★★
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbzhh_1BWbFNwumkrE7P3o0lwp5Ea6v9aCN3zK0DY__B3BOX_o47bAI6K5MLiMj2aF1b/exec";
-
-        let storeData = {};
-        const loginBtn = document.getElementById('login-btn');
-        const codeInput = document.getElementById('store-code');
-        const errorMsg = document.getElementById('error-msg');
-
-        // 讀取外部檔案
-        fetch('store_table.txt?v=' + new Date().getTime())
-            .then(res => {
-                if (!res.ok) throw new Error("找不到名單檔案");
-                return res.json();
-            })
-            .then(data => {
-                storeData = data;
-                console.log("店家名單載入成功", Object.keys(data).length + " 筆");
-            })
-            .catch(err => {
-                console.error("載入失敗:", err);
-                errorMsg.style.display = 'flex';
-                errorMsg.textContent = "⚠️ 系統載入中或格式錯誤，請重新整理";
-            });
-
-        loginBtn.addEventListener('click', performLogin);
-        codeInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') performLogin(); });
-
-        function performLogin() {
-            const inputCode = codeInput.value.trim();
-            errorMsg.style.display = 'none';
-
-            // 檢查名單是否已載入
-            if (Object.keys(storeData).length === 0) {
-                errorMsg.style.display = 'flex';
-                errorMsg.textContent = "⏳ 資料載入中，請稍後再試...";
-                location.reload(); 
-                return;
-            }
-
-            let foundStoreName = null;
-            for (const [name, code] of Object.entries(storeData)) {
-                if (code === inputCode) { foundStoreName = name; break; }
-            }
-
-            if (foundStoreName) {
-                // --- 登入成功 ---
-                
-                // 1. UI 變更：避免使用者重複點擊，給予回饋
-                loginBtn.innerText = "驗證成功，登入中...";
-                loginBtn.disabled = true;
-
-                // 2. 寫入本地儲存
-                localStorage.setItem('storeName', foundStoreName);
-                localStorage.setItem('storeIndex', inputCode);
-
-                // 3. ★★★ 關鍵修改：發送登入紀錄給 GAS ★★★
-                // 使用 no-cors 模式發後不理，速度最快
-                try {
-                    fetch(GAS_URL, {
-                        method: "POST",
-                        mode: 'no-cors',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            action: "login",       // 告訴後端這是登入動作
-                            storeName: foundStoreName // 說是哪家店
-                        })
-                    });
-                } catch (e) {
-                    console.error("Log發送失敗，但不影響登入");
-                }
-
-                // 4. 延遲跳轉 (為了確保上面的 fetch 訊號有時間發出去)
-                setTimeout(() => {
-                    location.href = 'store.html';
-                }, 500); // 延遲 0.5 秒
-                
-            } else {
-                // --- 登入失敗 ---
-                errorMsg.style.display = 'flex';
-                errorMsg.textContent = "✖ 密碼錯誤，請重新輸入";
-                codeInput.value = '';
-                codeInput.focus();
-            }
-        }
-    </script>
 </body>
 </html>
